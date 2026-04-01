@@ -1,3 +1,32 @@
-# MKStack
+# Postr
 
-Template for building Nostr client application with React 18.x, TailwindCSS 3.x, Vite, shadcn/ui, and Nostrify.
+A Nostr client for posting notes, images, and classified ads.
+
+## Features
+
+- **Notes** — post kind 1 text notes with optional image attachments
+- **Images** — post kind 20 picture events (NIP-68) with captions
+- **Classified Ads** — post NIP-99 classified listings (kind 30402) with title, summary, description, price, location, category, stock count, and up to 5 specifications
+- **Multi-relay support** — configure up to 3 relays via the settings panel
+- **Nostr login** — sign in with any NIP-07 browser extension
+
+## Built With
+
+- [React 18](https://react.dev/)
+- [Vite](https://vitejs.dev/)
+- [TailwindCSS](https://tailwindcss.com/)
+- [shadcn/ui](https://ui.shadcn.com/)
+- [Nostrify](https://nostrify.dev/)
+- [MKStack](https://soapbox.pub/mkstack)
+
+## Getting Started
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:8080](http://localhost:8080) in your browser.
+
+## License
+
+MIT

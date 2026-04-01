@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 import { useLoginActions } from '@/hooks/useLoginActions';
 import { Paperclip, Pen, Image, Tag } from 'lucide-react';
 import { useUploadFile } from '@/hooks/useUploadFile';
-import { nip05 } from 'nostr-tools';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function PostNotePage() {
@@ -88,21 +87,6 @@ export default function PostNotePage() {
     const content = imageFile ? `${noteContent}\n${imageUrl}` : noteContent;
     const tags: string[][] = imageFile ? [...imetaTags] : [];
 
-    // NIP-05 tagging logic
-    const nip05Regex = /\b([a-zA-Z0-9-_.]+)@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+\b/g;
-    const nip05Matches = [...noteContent.matchAll(nip05Regex)];
-
-    for (const match of nip05Matches) {
-      const nip05Identifier = match[0];
-      try {
-        const profile = await nip05.queryProfile(nip05Identifier);
-        if (profile && profile.pubkey) {
-          tags.push(["p", profile.pubkey]);
-        }
-      } catch {
-        // silently skip unresolvable NIP-05 identifiers
-      }
-    }
 
     try {
       await createEvent({
