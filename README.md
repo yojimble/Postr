@@ -8,7 +8,7 @@ A Nostr client for posting notes, images, and classified ads.
 - **Images** — post kind 20 picture events (NIP-68) with captions
 - **Classified Ads** — post NIP-99 classified listings (kind 30402) with title, summary, description, price, location, category, stock count, and up to 5 specifications
 - **Multi-relay support** — configure up to 3 relays via the settings panel
-- **Nostr login** — sign in with any NIP-07 browser extension
+- **Nostr login** — sign events with any NIP-07 browser extension
 
 ## Built With
 
@@ -25,8 +25,4 @@ A Nostr client for posting notes, images, and classified ads.
 npm run dev
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in your browser.
-
-## License
-
-MIT
+Open [http://localhost:8080](http://localhost:8080) in your browser
