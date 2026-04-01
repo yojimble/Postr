@@ -21,8 +21,23 @@ A Nostr client for posting notes, images, and classified ads.
 
 ## Getting Started
 
+**Prerequisites:** [Node.js](https://nodejs.org/) (v18 or higher). If you don't have it, install via [nvm](https://github.com/nvm-sh/nvm):
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+nvm install --lts
+```
+
+**Run locally:**
+
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in your browser
+Open [http://localhost:8080](http://localhost:8080) in your browser.
+
+You'll need a NIP-07 browser extension to sign in, such as [Alby](https://getalby.com) or [nos2x](https://github.com/fiatjaf/nos2x).
+
+## License
+
+MIT
