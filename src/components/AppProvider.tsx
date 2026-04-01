@@ -16,7 +16,7 @@ interface AppProviderProps {
 // Zod schema for AppConfig validation
 const AppConfigSchema: z.ZodType<AppConfig, z.ZodTypeDef, unknown> = z.object({
   theme: z.enum(['dark', 'light', 'system']),
-  relayUrl: z.string().url(),
+  relayUrls: z.array(z.string().url()),
 });
 
 export function AppProvider(props: AppProviderProps) {
@@ -88,11 +88,11 @@ function useApplyTheme(theme: Theme) {
     if (theme !== 'system') return;
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    
+
     const handleChange = () => {
       const root = window.document.documentElement;
       root.classList.remove('light', 'dark');
-      
+
       const systemTheme = mediaQuery.matches ? 'dark' : 'light';
       root.classList.add(systemTheme);
     };

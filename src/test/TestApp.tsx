@@ -22,7 +22,7 @@ export function TestApp({ children }: TestAppProps) {
 
   const defaultConfig: AppConfig = {
     theme: 'light',
-    relayUrl: 'wss://relay.nostr.band',
+    relayUrls: ['wss://relay.nostr.band'], // Updated to relayUrls
   };
 
   return (

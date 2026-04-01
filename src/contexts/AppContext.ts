@@ -6,7 +6,7 @@ export interface AppConfig {
   /** Current theme */
   theme: Theme;
   /** Selected relay URL */
-  relayUrl: string;
+  relayUrls: string[];
 }
 
 export interface AppContextType {
