@@ -66,32 +66,36 @@ export default function PostNotePage() {
       return;
     }
 
-    // --- Step 1: Ensure user is logged in (get public key) ---
+    // --- Step 1: Ensure user is logged in ---
     if (!user) {
       try {
-        await extension(); // This will prompt the user to log in
-        // After awaiting, check if user is now available. If not, user cancelled or failed.
-        if (!user) { // Re-check user after extension() call
+        await extension();
+        if (!user) {
           toast.error("Login required to proceed.");
           return;
         }
       } catch (error) {
-        toast.error(`Login failed: ${error.message}`);
+        toast.error(`Login failed: ${(error as Error).message}`);
         return;
       }
     }
 
-    // --- Step 2: Upload images (if selected) ---
+    const toastId = noteImageFiles.length > 0
+      ? toast.loading(`Uploading 0 / ${noteImageFiles.length}...`)
+      : undefined;
+
+    // --- Step 2: Upload files (if selected) ---
     const uploadedUrls: string[] = [];
     const allImetaTags: string[][] = [];
 
-    for (const file of noteImageFiles) {
+    for (let i = 0; i < noteImageFiles.length; i++) {
+      toast.loading(`Uploading ${i + 1} / ${noteImageFiles.length}...`, { id: toastId });
       try {
-        const [[_, url], ...restTags] = await uploadFile(file);
+        const [[_, url], ...restTags] = await uploadFile(noteImageFiles[i]);
         uploadedUrls.push(url);
         allImetaTags.push(...restTags);
       } catch (error) {
-        toast.error(`Image upload failed: ${error.message}`);
+        toast.error(`Upload failed: ${(error as Error).message}`, { id: toastId });
         return;
       }
     }
@@ -102,19 +106,15 @@ export default function PostNotePage() {
     const tags: string[][] = [...allImetaTags];
 
     try {
-      await createEvent({
-        kind: 1,
-        content: content,
-        tags: tags,
-      });
-      toast.success('Note posted successfully!');
+      await createEvent({ kind: 1, content, tags });
+      toast.success('Note posted!', { id: toastId, duration: 4000 });
       setNoteContent('');
       setNoteImageFiles([]);
       if (noteFileInputRef.current) {
         noteFileInputRef.current.value = '';
       }
     } catch (error) {
-      toast.error(`Failed to post note: ${error.message}`);
+      toast.error(`Failed to post note: ${(error as Error).message}`, { id: toastId });
     }
   };
 
