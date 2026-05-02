@@ -13,6 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function PostNotePage() {
   const [noteContent, setNoteContent] = useState('');
+  const [noteImageFiles, setNoteImageFiles] = useState<File[]>([]);
+  const noteFileInputRef = useRef<HTMLInputElement>(null);
+
   const [imageCaption, setImageCaption] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +38,16 @@ export default function PostNotePage() {
   const { extension } = useLoginActions();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
 
+  const handleNoteFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const selected = Array.from(e.target.files).slice(0, 10);
+      setNoteImageFiles(prev => {
+        const combined = [...prev, ...selected];
+        return combined.slice(0, 10);
+      });
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setImageFile(e.target.files[0]);
@@ -42,14 +55,14 @@ export default function PostNotePage() {
   };
 
   const handleUploadClick = () => {
-    fileInputRef.current?.click();
+    noteFileInputRef.current?.click();
   };
 
   const handleSubmitNote = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!noteContent.trim() && !imageFile) {
-      toast.error('Note content or an image is required.');
+    if (!noteContent.trim() && noteImageFiles.length === 0) {
+      toast.error('Note content or a media file is required.');
       return;
     }
 
@@ -68,15 +81,15 @@ export default function PostNotePage() {
       }
     }
 
-    // --- Step 2: Upload image (if selected) ---
-    let imageUrl = '';
-    let imetaTags: string[][] = [];
+    // --- Step 2: Upload images (if selected) ---
+    const uploadedUrls: string[] = [];
+    const allImetaTags: string[][] = [];
 
-    if (imageFile) {
+    for (const file of noteImageFiles) {
       try {
-        const [[_, url], ...restTags] = await uploadFile(imageFile);
-        imageUrl = url;
-        imetaTags = restTags;
+        const [[_, url], ...restTags] = await uploadFile(file);
+        uploadedUrls.push(url);
+        allImetaTags.push(...restTags);
       } catch (error) {
         toast.error(`Image upload failed: ${error.message}`);
         return;
@@ -84,9 +97,9 @@ export default function PostNotePage() {
     }
 
     // --- Step 3: Prepare and publish note event ---
-    const content = imageFile ? `${noteContent}\n${imageUrl}` : noteContent;
-    const tags: string[][] = imageFile ? [...imetaTags] : [];
-
+    const urlSuffix = uploadedUrls.length > 0 ? '\n' + uploadedUrls.join('\n') : '';
+    const content = noteContent + urlSuffix;
+    const tags: string[][] = [...allImetaTags];
 
     try {
       await createEvent({
@@ -96,9 +109,9 @@ export default function PostNotePage() {
       });
       toast.success('Note posted successfully!');
       setNoteContent('');
-      setImageFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      setNoteImageFiles([]);
+      if (noteFileInputRef.current) {
+        noteFileInputRef.current.value = '';
       }
     } catch (error) {
       toast.error(`Failed to post note: ${error.message}`);
@@ -282,31 +295,48 @@ export default function PostNotePage() {
                     rows={5}
                     disabled={isSubmitting}
                   />
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-col gap-2">
                     <input
                       type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
+                      ref={noteFileInputRef}
+                      onChange={handleNoteFileChange}
                       className="hidden"
-                      accept="image/*"
+                      accept="image/*,video/*"
+                      multiple
                     />
-                    <Button
-                      type="button"
-                      onClick={handleUploadClick}
-                      variant="outline"
-                      size="icon"
-                      disabled={isSubmitting}
-                    >
-                      <Paperclip className="h-4 w-4" />
-                    </Button>
-                    {imageFile && (
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        type="button"
+                        onClick={handleUploadClick}
+                        variant="outline"
+                        size="icon"
+                        disabled={isSubmitting || noteImageFiles.length >= 10}
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </Button>
                       <span className="text-sm text-muted-foreground">
-                        {imageFile.name}
+                        {noteImageFiles.length > 0 ? `${noteImageFiles.length}/10 file${noteImageFiles.length > 1 ? 's' : ''} selected` : ''}
                       </span>
+                      <Button type="submit" disabled={isSubmitting} className="ml-auto">
+                        {isSubmitting ? 'Signing...' : 'Sign'}
+                      </Button>
+                    </div>
+                    {noteImageFiles.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {noteImageFiles.map((f, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
+                            {f.name}
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => setNoteImageFiles(prev => prev.filter((_, j) => j !== i))}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
                     )}
-                    <Button type="submit" disabled={isSubmitting}>
-                      {isSubmitting ? 'Signing...' : 'Sign'}
-                    </Button>
                   </div>
                 </form>
               </TabsContent>
