@@ -5,20 +5,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/useToast';
 import { useLoginActions } from '@/hooks/useLoginActions';
 import { Paperclip, Pen, Image, Tag } from 'lucide-react';
 import { useUploadFile } from '@/hooks/useUploadFile';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function PostNotePage() {
-  const [noteContent, setNoteContent] = useState('');
-  const [noteImageFiles, setNoteImageFiles] = useState<File[]>([]);
-  const noteFileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
+  // Note tab state
+  const [noteContent, setNoteContent] = useState('');
+  const [noteFiles, setNoteFiles] = useState<File[]>([]);
+  const [noteInputKey, setNoteInputKey] = useState(0);
+
+  // Image tab state
   const [imageCaption, setImageCaption] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageInputKey, setImageInputKey] = useState(0);
 
   // Classified ad state
   const [adTitle, setAdTitle] = useState('');
@@ -31,75 +35,50 @@ export default function PostNotePage() {
   const [adStock, setAdStock] = useState('1');
   const [adSpecs, setAdSpecs] = useState<{ name: string; value: string }[]>([{ name: '', value: '' }]);
   const [adImageFile, setAdImageFile] = useState<File | null>(null);
-  const adFileInputRef = useRef<HTMLInputElement>(null);
+  const [adInputKey, setAdInputKey] = useState(0);
 
   const { user } = useCurrentUser();
   const { mutateAsync: createEvent, isPending: isPublishing } = useNostrPublish();
   const { extension } = useLoginActions();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
 
-  const handleNoteFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selected = Array.from(e.target.files).slice(0, 10);
-      setNoteImageFiles(prev => {
-        const combined = [...prev, ...selected];
-        return combined.slice(0, 10);
-      });
+  const isSubmitting = isPublishing || isUploading;
+
+  const ensureLoggedIn = async () => {
+    if (user) return true;
+    try {
+      await extension();
+      return !!user;
+    } catch {
+      toast({ title: 'Login failed', variant: 'destructive' });
+      return false;
     }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setImageFile(e.target.files[0]);
-    }
-  };
-
-  const handleNoteUploadClick = () => {
-    noteFileInputRef.current?.click();
-  };
-
-  const handleImageUploadClick = () => {
-    fileInputRef.current?.click();
   };
 
   const handleSubmitNote = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!noteContent.trim() && noteImageFiles.length === 0) {
-      toast.error('Note content or a media file is required.');
+    if (!noteContent.trim() && noteFiles.length === 0) {
+      toast({ title: 'Note content or a media file is required.', variant: 'destructive' });
       return;
     }
 
-    // --- Step 1: Ensure user is logged in ---
-    if (!user) {
-      try {
-        await extension();
-        if (!user) {
-          toast.error("Login required to proceed.");
-          return;
-        }
-      } catch (error) {
-        toast.error(`Login failed: ${(error as Error).message}`);
-        return;
-      }
-    }
+    if (!await ensureLoggedIn()) return;
 
-    // --- Step 2: Upload files (if selected) ---
     const uploadedUrls: string[] = [];
     const allImetaTags: string[][] = [];
 
-    for (let i = 0; i < noteImageFiles.length; i++) {
+    for (let i = 0; i < noteFiles.length; i++) {
       try {
-        const [[_, url], ...restTags] = await uploadFile(noteImageFiles[i]);
+        const [[_, url], ...restTags] = await uploadFile(noteFiles[i]);
         uploadedUrls.push(url);
         allImetaTags.push(...restTags);
       } catch (error) {
-        toast.error(`Upload failed (file ${i + 1}): ${(error as Error).message}`);
+        toast({ title: `Upload failed (file ${i + 1})`, description: (error as Error).message, variant: 'destructive' });
         return;
       }
     }
 
-    // --- Step 3: Prepare and publish note event ---
     const urlSuffix = uploadedUrls.length > 0 ? '\n' + uploadedUrls.join('\n') : '';
     const content = noteContent + urlSuffix;
     const tags: string[][] = [...allImetaTags];
@@ -107,13 +86,11 @@ export default function PostNotePage() {
     try {
       await createEvent({ kind: 1, content, tags });
       setNoteContent('');
-      setNoteImageFiles([]);
-      if (noteFileInputRef.current) {
-        noteFileInputRef.current.value = '';
-      }
-      setTimeout(() => toast.success('Note posted!', { duration: 5000 }), 0);
+      setNoteFiles([]);
+      setNoteInputKey(k => k + 1);
+      toast({ title: 'Note posted!' });
     } catch (error) {
-      setTimeout(() => toast.error(`Failed to post note: ${(error as Error).message}`), 0);
+      toast({ title: 'Failed to post note', description: (error as Error).message, variant: 'destructive' });
     }
   };
 
@@ -121,54 +98,33 @@ export default function PostNotePage() {
     e.preventDefault();
 
     if (!imageFile) {
-      toast.error('Please select an image to post.');
+      toast({ title: 'Please select an image to post.', variant: 'destructive' });
       return;
     }
 
-    // --- Step 1: Ensure user is logged in (get public key) ---
-    if (!user) {
-      try {
-        await extension();
-        if (!user) { // Re-check user after extension() call
-          toast.error("Login required to proceed.");
-          return;
-        }
-      } catch (error) {
-        toast.error(`Login failed: ${error.message}`);
-        return;
-      }
-    }
+    if (!await ensureLoggedIn()) return;
 
-    // --- Step 2: Upload image ---
     let nip94Tags: string[][] = [];
-
     try {
       nip94Tags = await uploadFile(imageFile);
     } catch (error) {
-      toast.error(`Image upload failed: ${error.message}`);
+      toast({ title: 'Image upload failed', description: (error as Error).message, variant: 'destructive' });
       return;
     }
 
-    // --- Step 3: Publish Kind 20 event (NIP-68) ---
     const url = nip94Tags.find(([t]) => t === 'url')?.[1] ?? '';
     const dim = nip94Tags.find(([t]) => t === 'dim')?.[1];
     const imeta: string[] = ['imeta', `url ${url}`];
     if (dim) imeta.push(`dim ${dim}`);
 
     try {
-      await createEvent({
-        kind: 20,
-        content: imageCaption.trim(),
-        tags: [imeta],
-      });
+      await createEvent({ kind: 20, content: imageCaption.trim(), tags: [imeta] });
       setImageFile(null);
       setImageCaption('');
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      setTimeout(() => toast.success('Image posted!', { duration: 5000 }), 0);
+      setImageInputKey(k => k + 1);
+      toast({ title: 'Image posted!' });
     } catch (error) {
-      setTimeout(() => toast.error(`Failed to post image: ${(error as Error).message}`), 0);
+      toast({ title: 'Failed to post image', description: (error as Error).message, variant: 'destructive' });
     }
   };
 
@@ -176,27 +132,15 @@ export default function PostNotePage() {
     e.preventDefault();
 
     if (!adTitle.trim() || !adDescription.trim()) {
-      toast.error('Title and description are required.');
+      toast({ title: 'Title and description are required.', variant: 'destructive' });
       return;
     }
-
     if (!adSummary.trim()) {
-      toast.error('Summary is required.');
+      toast({ title: 'Summary is required.', variant: 'destructive' });
       return;
     }
 
-    if (!user) {
-      try {
-        await extension();
-        if (!user) {
-          toast.error("Login required to proceed.");
-          return;
-        }
-      } catch (error) {
-        toast.error(`Login failed: ${(error as Error).message}`);
-        return;
-      }
-    }
+    if (!await ensureLoggedIn()) return;
 
     let imageUrl = '';
     let imetaTags: string[][] = [];
@@ -207,14 +151,13 @@ export default function PostNotePage() {
         imageUrl = url;
         imetaTags = restTags;
       } catch (error) {
-        toast.error(`Image upload failed: ${(error as Error).message}`);
+        toast({ title: 'Image upload failed', description: (error as Error).message, variant: 'destructive' });
         return;
       }
     }
 
     const d = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000).toString();
-
     const tags: string[][] = [
       ['d', d],
       ['title', adTitle.trim()],
@@ -223,18 +166,10 @@ export default function PostNotePage() {
       ['status', 'active'],
     ];
 
-    if (adPrice.trim()) {
-      tags.push(['price', adPrice.trim(), adCurrency.trim() || 'USD']);
-    }
-    if (adLocation.trim()) {
-      tags.push(['location', adLocation.trim()]);
-    }
-    if (adCategory.trim()) {
-      tags.push(['t', adCategory.trim().toLowerCase()]);
-    }
-    if (adStock.trim()) {
-      tags.push(['quantity', adStock.trim()]);
-    }
+    if (adPrice.trim()) tags.push(['price', adPrice.trim(), adCurrency.trim() || 'USD']);
+    if (adLocation.trim()) tags.push(['location', adLocation.trim()]);
+    if (adCategory.trim()) tags.push(['t', adCategory.trim().toLowerCase()]);
+    if (adStock.trim()) tags.push(['quantity', adStock.trim()]);
     for (const spec of adSpecs) {
       if (spec.name.trim() && spec.value.trim()) {
         tags.push(['spec', spec.name.trim(), spec.value.trim()]);
@@ -246,11 +181,7 @@ export default function PostNotePage() {
     }
 
     try {
-      await createEvent({
-        kind: 30402,
-        content: adDescription.trim(),
-        tags,
-      });
+      await createEvent({ kind: 30402, content: adDescription.trim(), tags });
       setAdTitle('');
       setAdSummary('');
       setAdDescription('');
@@ -261,236 +192,188 @@ export default function PostNotePage() {
       setAdStock('1');
       setAdSpecs([{ name: '', value: '' }]);
       setAdImageFile(null);
-      if (adFileInputRef.current) adFileInputRef.current.value = '';
-      setTimeout(() => toast.success('Classified ad posted!', { duration: 5000 }), 0);
+      setAdInputKey(k => k + 1);
+      toast({ title: 'Classified ad posted!' });
     } catch (error) {
-      setTimeout(() => toast.error(`Failed to post ad: ${(error as Error).message}`), 0);
+      toast({ title: 'Failed to post ad', description: (error as Error).message, variant: 'destructive' });
     }
   };
-
-  const isSubmitting = isPublishing || isUploading;
 
   return (
     <div className="fixed left-1/2 -translate-x-1/2 top-[10%] w-full max-w-2xl px-4 max-h-[85vh] overflow-y-auto">
       <Card>
         <CardHeader>
-          <CardTitle>Post a new...</CardTitle> {/* Changed title */}
+          <CardTitle>Post a new...</CardTitle>
         </CardHeader>
         <CardContent>
-            <Tabs defaultValue="note" className="w-full">
-              <TabsList className="flex w-full bg-muted text-muted-foreground rounded-t-lg border-b-0">
-                <TabsTrigger value="note" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Pen className="h-5 w-5" /></TabsTrigger>
-                <div className="w-px bg-border self-stretch my-1" />
-                <TabsTrigger value="image" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Image className="h-5 w-5" /></TabsTrigger>
-                <div className="w-px bg-border self-stretch my-1" />
-                <TabsTrigger value="classified" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Tag className="h-5 w-5" /></TabsTrigger>
-              </TabsList>
-              <TabsContent value="note">
-                <form onSubmit={handleSubmitNote} className="space-y-4 mt-4">
-                  <Textarea
-                    placeholder="What's on your mind?"
-                    value={noteContent}
-                    onChange={(e) => setNoteContent(e.target.value)}
-                    rows={5}
-                    disabled={isSubmitting}
-                  />
-                  <div className="flex flex-col gap-2">
-                    <input
-                      type="file"
-                      ref={noteFileInputRef}
-                      onChange={handleNoteFileChange}
-                      className="hidden"
-                      accept="image/*,video/*"
-                      multiple
-                    />
-                    <div className="flex items-center space-x-2">
+          <Tabs defaultValue="note" className="w-full">
+            <TabsList className="flex w-full bg-muted text-muted-foreground rounded-t-lg border-b-0">
+              <TabsTrigger value="note" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Pen className="h-5 w-5" /></TabsTrigger>
+              <div className="w-px bg-border self-stretch my-1" />
+              <TabsTrigger value="image" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Image className="h-5 w-5" /></TabsTrigger>
+              <div className="w-px bg-border self-stretch my-1" />
+              <TabsTrigger value="classified" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Tag className="h-5 w-5" /></TabsTrigger>
+            </TabsList>
+
+            {/* Note tab */}
+            <TabsContent value="note">
+              <form onSubmit={handleSubmitNote} className="space-y-4 mt-4">
+                <Textarea
+                  placeholder="What's on your mind?"
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  rows={5}
+                  disabled={isSubmitting}
+                />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center space-x-2">
+                    <label className="cursor-pointer">
+                      <input
+                        key={noteInputKey}
+                        type="file"
+                        className="hidden"
+                        accept="image/*,video/*"
+                        multiple
+                        disabled={isSubmitting || noteFiles.length >= 10}
+                        onChange={(e) => {
+                          if (e.target.files) {
+                            const selected = Array.from(e.target.files);
+                            setNoteFiles(prev => [...prev, ...selected].slice(0, 10));
+                          }
+                        }}
+                      />
                       <Button
                         type="button"
-                        onClick={handleNoteUploadClick}
                         variant="outline"
                         size="icon"
-                        disabled={isSubmitting || noteImageFiles.length >= 10}
+                        disabled={isSubmitting || noteFiles.length >= 10}
+                        asChild
                       >
-                        <Paperclip className="h-4 w-4" />
+                        <span><Paperclip className="h-4 w-4" /></span>
                       </Button>
-                      <span className="text-sm text-muted-foreground">
-                        {noteImageFiles.length > 0 ? `${noteImageFiles.length}/10 file${noteImageFiles.length > 1 ? 's' : ''} selected` : ''}
-                      </span>
-                      <Button type="submit" disabled={isSubmitting} className="ml-auto">
-                        {isSubmitting ? 'Signing...' : 'Sign'}
-                      </Button>
+                    </label>
+                    <span className="text-sm text-muted-foreground">
+                      {noteFiles.length > 0 ? `${noteFiles.length}/10 file${noteFiles.length > 1 ? 's' : ''} selected` : ''}
+                    </span>
+                    <Button type="submit" disabled={isSubmitting} className="ml-auto">
+                      {isSubmitting ? 'Signing...' : 'Sign'}
+                    </Button>
+                  </div>
+                  {noteFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {noteFiles.map((f, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
+                          {f.name}
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => setNoteFiles(prev => prev.filter((_, j) => j !== i))}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
                     </div>
-                    {noteImageFiles.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {noteImageFiles.map((f, i) => (
-                          <span key={i} className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
-                            {f.name}
-                            <button
-                              type="button"
-                              className="text-muted-foreground hover:text-foreground"
-                              onClick={() => setNoteImageFiles(prev => prev.filter((_, j) => j !== i))}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </form>
-              </TabsContent>
-              <TabsContent value="image">
-                <form onSubmit={handleSubmitImage} className="space-y-4 mt-4">
-                  <Input
-                    placeholder="Caption (optional)"
-                    value={imageCaption}
-                    onChange={(e) => setImageCaption(e.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  <div className="flex items-center space-x-2">
+                  )}
+                </div>
+              </form>
+            </TabsContent>
+
+            {/* Image tab */}
+            <TabsContent value="image">
+              <form onSubmit={handleSubmitImage} className="space-y-4 mt-4">
+                <Input
+                  placeholder="Caption (optional)"
+                  value={imageCaption}
+                  onChange={(e) => setImageCaption(e.target.value)}
+                  disabled={isSubmitting}
+                />
+                <div className="flex items-center space-x-2">
+                  <label className="cursor-pointer">
                     <input
+                      key={imageInputKey}
                       type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
                       className="hidden"
                       accept="image/*"
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleImageUploadClick}
-                      variant="outline"
-                      size="icon"
                       disabled={isSubmitting}
-                    >
-                      <Paperclip className="h-4 w-4" />
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) setImageFile(e.target.files[0]);
+                      }}
+                    />
+                    <Button type="button" variant="outline" size="icon" disabled={isSubmitting} asChild>
+                      <span><Paperclip className="h-4 w-4" /></span>
                     </Button>
-                    {imageFile && (
-                      <span className="text-sm text-muted-foreground">
-                        {imageFile.name}
-                      </span>
-                    )}
-                    <Button type="submit" disabled={isSubmitting || !imageFile}>
-                      {isSubmitting ? 'Signing...' : 'Sign Image'}
-                    </Button>
-                  </div>
-                </form>
-              </TabsContent>
-              <TabsContent value="classified">
-                <form onSubmit={handleSubmitAd} className="space-y-3 mt-4">
-                  <Input
-                    placeholder="Title *"
-                    value={adTitle}
-                    onChange={(e) => setAdTitle(e.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  <Input
-                    placeholder="Summary *"
-                    value={adSummary}
-                    onChange={(e) => setAdSummary(e.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  <Textarea
-                    placeholder="Description *"
-                    value={adDescription}
-                    onChange={(e) => setAdDescription(e.target.value)}
-                    rows={4}
-                    disabled={isSubmitting}
-                  />
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Price"
-                      value={adPrice}
-                      onChange={(e) => setAdPrice(e.target.value)}
-                      disabled={isSubmitting}
-                      className="flex-1"
-                    />
-                    <Input
-                      placeholder="Currency"
-                      value={adCurrency}
-                      onChange={(e) => setAdCurrency(e.target.value)}
-                      disabled={isSubmitting}
-                      className="w-24"
-                    />
-                  </div>
-                  <Input
-                    placeholder="Location"
-                    value={adLocation}
-                    onChange={(e) => setAdLocation(e.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  <Input
-                    placeholder="Category (e.g. electronics, furniture)"
-                    value={adCategory}
-                    onChange={(e) => setAdCategory(e.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Stock"
-                    min="0"
-                    value={adStock}
-                    onChange={(e) => setAdStock(e.target.value)}
-                    disabled={isSubmitting}
-                    className="w-28"
-                  />
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {adSpecs.map((spec, i) => (
-                      <div key={i} className="flex gap-2">
-                        <Input
-                          placeholder="Spec name"
-                          value={spec.name}
-                          onChange={(e) => setAdSpecs(prev => prev.map((s, j) => j === i ? { ...s, name: e.target.value } : s))}
-                          disabled={isSubmitting}
-                          className="flex-1"
-                        />
-                        <Input
-                          placeholder="Value"
-                          value={spec.value}
-                          onChange={(e) => setAdSpecs(prev => prev.map((s, j) => j === i ? { ...s, value: e.target.value } : s))}
-                          disabled={isSubmitting}
-                          className="flex-1"
-                        />
-                      </div>
-                    ))}
-                    {adSpecs.length < 5 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setAdSpecs(prev => [...prev, { name: '', value: '' }])}
+                  </label>
+                  {imageFile && (
+                    <span className="text-sm text-muted-foreground">{imageFile.name}</span>
+                  )}
+                  <Button type="submit" disabled={isSubmitting || !imageFile}>
+                    {isSubmitting ? 'Signing...' : 'Sign Image'}
+                  </Button>
+                </div>
+              </form>
+            </TabsContent>
+
+            {/* Classified tab */}
+            <TabsContent value="classified">
+              <form onSubmit={handleSubmitAd} className="space-y-3 mt-4">
+                <Input placeholder="Title *" value={adTitle} onChange={(e) => setAdTitle(e.target.value)} disabled={isSubmitting} />
+                <Input placeholder="Summary *" value={adSummary} onChange={(e) => setAdSummary(e.target.value)} disabled={isSubmitting} />
+                <Textarea placeholder="Description *" value={adDescription} onChange={(e) => setAdDescription(e.target.value)} rows={4} disabled={isSubmitting} />
+                <div className="flex gap-2">
+                  <Input placeholder="Price" value={adPrice} onChange={(e) => setAdPrice(e.target.value)} disabled={isSubmitting} className="flex-1" />
+                  <Input placeholder="Currency" value={adCurrency} onChange={(e) => setAdCurrency(e.target.value)} disabled={isSubmitting} className="w-24" />
+                </div>
+                <Input placeholder="Location" value={adLocation} onChange={(e) => setAdLocation(e.target.value)} disabled={isSubmitting} />
+                <Input placeholder="Category (e.g. electronics, furniture)" value={adCategory} onChange={(e) => setAdCategory(e.target.value)} disabled={isSubmitting} />
+                <Input type="number" placeholder="Stock" min="0" value={adStock} onChange={(e) => setAdStock(e.target.value)} disabled={isSubmitting} className="w-28" />
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {adSpecs.map((spec, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        placeholder="Spec name"
+                        value={spec.name}
+                        onChange={(e) => setAdSpecs(prev => prev.map((s, j) => j === i ? { ...s, name: e.target.value } : s))}
                         disabled={isSubmitting}
-                      >
-                        + Add spec
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2">
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder="Value"
+                        value={spec.value}
+                        onChange={(e) => setAdSpecs(prev => prev.map((s, j) => j === i ? { ...s, value: e.target.value } : s))}
+                        disabled={isSubmitting}
+                        className="flex-1"
+                      />
+                    </div>
+                  ))}
+                  {adSpecs.length < 5 && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setAdSpecs(prev => [...prev, { name: '', value: '' }])} disabled={isSubmitting}>
+                      + Add spec
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <label className="cursor-pointer">
                     <input
+                      key={adInputKey}
                       type="file"
-                      ref={adFileInputRef}
-                      onChange={(e) => { if (e.target.files?.[0]) setAdImageFile(e.target.files[0]); }}
                       className="hidden"
                       accept="image/*"
-                    />
-                    <Button
-                      type="button"
-                      onClick={() => adFileInputRef.current?.click()}
-                      variant="outline"
-                      size="icon"
                       disabled={isSubmitting}
-                    >
-                      <Paperclip className="h-4 w-4" />
+                      onChange={(e) => { if (e.target.files?.[0]) setAdImageFile(e.target.files[0]); }}
+                    />
+                    <Button type="button" variant="outline" size="icon" disabled={isSubmitting} asChild>
+                      <span><Paperclip className="h-4 w-4" /></span>
                     </Button>
-                    {adImageFile && (
-                      <span className="text-sm text-muted-foreground">{adImageFile.name}</span>
-                    )}
-                    <Button type="submit" disabled={isSubmitting}>
-                      {isSubmitting ? 'Signing...' : 'Post Ad'}
-                    </Button>
-                  </div>
-                </form>
-              </TabsContent>
-            </Tabs>
+                  </label>
+                  {adImageFile && <span className="text-sm text-muted-foreground">{adImageFile.name}</span>}
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? 'Signing...' : 'Post Ad'}
+                  </Button>
+                </div>
+              </form>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>
