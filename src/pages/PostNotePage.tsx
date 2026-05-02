@@ -54,8 +54,12 @@ export default function PostNotePage() {
     }
   };
 
-  const handleUploadClick = () => {
+  const handleNoteUploadClick = () => {
     noteFileInputRef.current?.click();
+  };
+
+  const handleImageUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleSubmitNote = async (e: React.FormEvent) => {
@@ -80,22 +84,17 @@ export default function PostNotePage() {
       }
     }
 
-    const toastId = noteImageFiles.length > 0
-      ? toast.loading(`Uploading 0 / ${noteImageFiles.length}...`)
-      : undefined;
-
     // --- Step 2: Upload files (if selected) ---
     const uploadedUrls: string[] = [];
     const allImetaTags: string[][] = [];
 
     for (let i = 0; i < noteImageFiles.length; i++) {
-      toast.loading(`Uploading ${i + 1} / ${noteImageFiles.length}...`, { id: toastId });
       try {
         const [[_, url], ...restTags] = await uploadFile(noteImageFiles[i]);
         uploadedUrls.push(url);
         allImetaTags.push(...restTags);
       } catch (error) {
-        toast.error(`Upload failed: ${(error as Error).message}`, { id: toastId });
+        toast.error(`Upload failed (file ${i + 1}): ${(error as Error).message}`);
         return;
       }
     }
@@ -107,14 +106,14 @@ export default function PostNotePage() {
 
     try {
       await createEvent({ kind: 1, content, tags });
-      toast.success('Note posted!', { id: toastId, duration: 4000 });
       setNoteContent('');
       setNoteImageFiles([]);
       if (noteFileInputRef.current) {
         noteFileInputRef.current.value = '';
       }
+      setTimeout(() => toast.success('Note posted!', { duration: 5000 }), 0);
     } catch (error) {
-      toast.error(`Failed to post note: ${(error as Error).message}`, { id: toastId });
+      setTimeout(() => toast.error(`Failed to post note: ${(error as Error).message}`), 0);
     }
   };
 
@@ -162,14 +161,14 @@ export default function PostNotePage() {
         content: imageCaption.trim(),
         tags: [imeta],
       });
-      toast.success('Image posted!');
       setImageFile(null);
       setImageCaption('');
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      setTimeout(() => toast.success('Image posted!', { duration: 5000 }), 0);
     } catch (error) {
-      toast.error(`Failed to post image: ${error.message}`);
+      setTimeout(() => toast.error(`Failed to post image: ${(error as Error).message}`), 0);
     }
   };
 
@@ -252,7 +251,6 @@ export default function PostNotePage() {
         content: adDescription.trim(),
         tags,
       });
-      toast.success('Classified ad posted!');
       setAdTitle('');
       setAdSummary('');
       setAdDescription('');
@@ -264,8 +262,9 @@ export default function PostNotePage() {
       setAdSpecs([{ name: '', value: '' }]);
       setAdImageFile(null);
       if (adFileInputRef.current) adFileInputRef.current.value = '';
+      setTimeout(() => toast.success('Classified ad posted!', { duration: 5000 }), 0);
     } catch (error) {
-      toast.error(`Failed to post ad: ${(error as Error).message}`);
+      setTimeout(() => toast.error(`Failed to post ad: ${(error as Error).message}`), 0);
     }
   };
 
@@ -307,7 +306,7 @@ export default function PostNotePage() {
                     <div className="flex items-center space-x-2">
                       <Button
                         type="button"
-                        onClick={handleUploadClick}
+                        onClick={handleNoteUploadClick}
                         variant="outline"
                         size="icon"
                         disabled={isSubmitting || noteImageFiles.length >= 10}
@@ -358,7 +357,7 @@ export default function PostNotePage() {
                     />
                     <Button
                       type="button"
-                      onClick={handleUploadClick}
+                      onClick={handleImageUploadClick}
                       variant="outline"
                       size="icon"
                       disabled={isSubmitting}
