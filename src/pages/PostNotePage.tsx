@@ -1,18 +1,26 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/useToast';
 import { useLoginActions } from '@/hooks/useLoginActions';
-import { Paperclip, Pen, Image, Tag } from 'lucide-react';
+import { Paperclip, Pen, Image, Tag, X } from 'lucide-react';
 import { useUploadFile } from '@/hooks/useUploadFile';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function PostNotePage() {
-  const { toast } = useToast();
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const notifTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const notify = (message: string, type: 'success' | 'error' = 'success') => {
+    if (notifTimer.current) clearTimeout(notifTimer.current);
+    setNotification({ message, type });
+    notifTimer.current = setTimeout(() => setNotification(null), 5000);
+  };
+
+  useEffect(() => () => { if (notifTimer.current) clearTimeout(notifTimer.current); }, []);
 
   // Note tab state
   const [noteContent, setNoteContent] = useState('');
@@ -50,7 +58,7 @@ export default function PostNotePage() {
       await extension();
       return !!user;
     } catch {
-      toast({ title: 'Login failed', variant: 'destructive' });
+      notify('Login failed', 'error');
       return false;
     }
   };
@@ -59,7 +67,7 @@ export default function PostNotePage() {
     e.preventDefault();
 
     if (!noteContent.trim() && noteFiles.length === 0) {
-      toast({ title: 'Note content or a media file is required.', variant: 'destructive' });
+      notify('Note content or a media file is required.', 'error');
       return;
     }
 
@@ -74,7 +82,7 @@ export default function PostNotePage() {
         uploadedUrls.push(url);
         allImetaTags.push(...restTags);
       } catch (error) {
-        toast({ title: `Upload failed (file ${i + 1})`, description: (error as Error).message, variant: 'destructive' });
+        notify(`Upload failed (file ${i + 1}): ${(error as Error).message}`, 'error');
         return;
       }
     }
@@ -88,9 +96,9 @@ export default function PostNotePage() {
       setNoteContent('');
       setNoteFiles([]);
       setNoteInputKey(k => k + 1);
-      toast({ title: 'Note posted!' });
+      notify('Note posted!');
     } catch (error) {
-      toast({ title: 'Failed to post note', description: (error as Error).message, variant: 'destructive' });
+      notify(`Failed to post note: ${(error as Error).message}`, 'error');
     }
   };
 
@@ -98,7 +106,7 @@ export default function PostNotePage() {
     e.preventDefault();
 
     if (!imageFile) {
-      toast({ title: 'Please select an image to post.', variant: 'destructive' });
+      notify('Please select an image to post.', 'error');
       return;
     }
 
@@ -108,7 +116,7 @@ export default function PostNotePage() {
     try {
       nip94Tags = await uploadFile(imageFile);
     } catch (error) {
-      toast({ title: 'Image upload failed', description: (error as Error).message, variant: 'destructive' });
+      notify(`Image upload failed: ${(error as Error).message}`, 'error');
       return;
     }
 
@@ -122,9 +130,9 @@ export default function PostNotePage() {
       setImageFile(null);
       setImageCaption('');
       setImageInputKey(k => k + 1);
-      toast({ title: 'Image posted!' });
+      notify('Image posted!');
     } catch (error) {
-      toast({ title: 'Failed to post image', description: (error as Error).message, variant: 'destructive' });
+      notify(`Failed to post image: ${(error as Error).message}`, 'error');
     }
   };
 
@@ -132,11 +140,11 @@ export default function PostNotePage() {
     e.preventDefault();
 
     if (!adTitle.trim() || !adDescription.trim()) {
-      toast({ title: 'Title and description are required.', variant: 'destructive' });
+      notify('Title and description are required.', 'error');
       return;
     }
     if (!adSummary.trim()) {
-      toast({ title: 'Summary is required.', variant: 'destructive' });
+      notify('Summary is required.', 'error');
       return;
     }
 
@@ -151,7 +159,7 @@ export default function PostNotePage() {
         imageUrl = url;
         imetaTags = restTags;
       } catch (error) {
-        toast({ title: 'Image upload failed', description: (error as Error).message, variant: 'destructive' });
+        notify(`Image upload failed: ${(error as Error).message}`, 'error');
         return;
       }
     }
@@ -193,9 +201,9 @@ export default function PostNotePage() {
       setAdSpecs([{ name: '', value: '' }]);
       setAdImageFile(null);
       setAdInputKey(k => k + 1);
-      toast({ title: 'Classified ad posted!' });
+      notify('Classified ad posted!');
     } catch (error) {
-      toast({ title: 'Failed to post ad', description: (error as Error).message, variant: 'destructive' });
+      notify(`Failed to post ad: ${(error as Error).message}`, 'error');
     }
   };
 
@@ -206,6 +214,12 @@ export default function PostNotePage() {
           <CardTitle>Post a new...</CardTitle>
         </CardHeader>
         <CardContent>
+          {notification && (
+            <div className={`flex items-center justify-between rounded-md px-3 py-2 mb-3 text-sm ${notification.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
+              <span>{notification.message}</span>
+              <button type="button" onClick={() => setNotification(null)} className="ml-2 opacity-60 hover:opacity-100"><X className="h-3 w-3" /></button>
+            </div>
+          )}
           <Tabs defaultValue="note" className="w-full">
             <TabsList className="flex w-full bg-muted text-muted-foreground rounded-t-lg border-b-0">
               <TabsTrigger value="note" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Pen className="h-5 w-5" /></TabsTrigger>
