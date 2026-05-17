@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
   <!-- note body (fold at top-right) -->
-  <polygon points="3,3 21,3 29,11 29,29 3,29" fill="white" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M5,3 L21,3 L29,11 L29,27 Q29,29 27,29 L5,29 Q3,29 3,27 L3,5 Q3,3 5,3 Z" fill="white" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>
   <!-- fold -->
   <polygon points="21,3 29,11 21,11" fill="#d1d5db" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>
   <!-- lines -->
