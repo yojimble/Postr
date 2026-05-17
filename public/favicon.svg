@@ -1,7 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#7c3aed"/>
-  <g transform="translate(7, 5) scale(0.72)">
-    <path d="M18 2l4 4L8 20H4v-4L18 2z" fill="white" stroke="white" stroke-width="0.5" stroke-linejoin="round"/>
-    <path d="M4 20v4h4l-4-4z" fill="#c4b5fd"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <g transform="rotate(-45 16 16)">
+    <!-- eraser -->
+    <rect x="13" y="4" width="6" height="4" rx="1" fill="#f87171"/>
+    <!-- band -->
+    <rect x="13" y="8" width="6" height="1.5" fill="#d1d5db"/>
+    <!-- body -->
+    <rect x="13" y="9.5" width="6" height="14" fill="#fbbf24"/>
+    <!-- tip wood -->
+    <path d="M13 23.5 L19 23.5 L16 28 Z" fill="#e5c07b"/>
+    <!-- graphite -->
+    <path d="M14.5 23.5 L17.5 23.5 L16 27 Z" fill="#374151"/>
   </g>
 </svg>
