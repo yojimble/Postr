@@ -25,7 +25,9 @@ export default function PostNotePage() {
   // Note tab state
   const [noteContent, setNoteContent] = useState('');
   const [noteFiles, setNoteFiles] = useState<File[]>([]);
+  const [noteUrls, setNoteUrls] = useState<string[]>([]);
   const [noteInputKey, setNoteInputKey] = useState(0);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Image tab state
   const [imageCaption, setImageCaption] = useState('');
@@ -66,7 +68,7 @@ export default function PostNotePage() {
   const handleSubmitNote = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!noteContent.trim() && noteFiles.length === 0) {
+    if (!noteContent.trim() && noteFiles.length === 0 && noteUrls.length === 0) {
       notify('Note content or a media file is required.', 'error');
       return;
     }
@@ -87,6 +89,24 @@ export default function PostNotePage() {
       }
     }
 
+    for (let i = 0; i < noteUrls.length; i++) {
+      const url = noteUrls[i];
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const ext = blob.type.split('/')[1]?.split(';')[0] ?? 'jpg';
+        const file = new File([blob], `image-${i + 1}.${ext}`, { type: blob.type });
+        const [[_, blosUrl], ...restTags] = await uploadFile(file);
+        uploadedUrls.push(blosUrl);
+        allImetaTags.push(...restTags);
+      } catch {
+        // CORS or network failure — embed the original URL as-is
+        uploadedUrls.push(url);
+        allImetaTags.push(['imeta', `url ${url}`]);
+      }
+    }
+
     const urlSuffix = uploadedUrls.length > 0 ? '\n' + uploadedUrls.join('\n') : '';
     const content = noteContent + urlSuffix;
     const tags: string[][] = [...allImetaTags];
@@ -95,6 +115,7 @@ export default function PostNotePage() {
       await createEvent({ kind: 1, content, tags });
       setNoteContent('');
       setNoteFiles([]);
+      setNoteUrls([]);
       setNoteInputKey(k => k + 1);
       notify('Note posted!');
     } catch (error) {
@@ -232,13 +253,39 @@ export default function PostNotePage() {
             {/* Note tab */}
             <TabsContent value="note">
               <form onSubmit={handleSubmitNote} className="space-y-4 mt-4">
-                <Textarea
-                  placeholder="What's on your mind?"
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  rows={5}
-                  disabled={isSubmitting}
-                />
+                <div className="relative">
+                  <Textarea
+                    placeholder="What's on your mind?"
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    rows={5}
+                    disabled={isSubmitting}
+                    className={`resize-none transition-colors ${isDraggingOver ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
+                    onDragLeave={() => setIsDraggingOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingOver(false);
+                      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
+                      if (files.length > 0) {
+                        setNoteFiles(prev => [...prev, ...files].slice(0, 10));
+                        return;
+                      }
+                      const html = e.dataTransfer.getData('text/html');
+                      const srcMatch = html ? html.match(/src="([^"]+)"/) : null;
+                      const rawUrl = srcMatch?.[1] ?? e.dataTransfer.getData('text/uri-list') ?? e.dataTransfer.getData('text/plain');
+                      const url = rawUrl?.split('\n')[0]?.trim();
+                      if (url && /^https?:\/\//i.test(url)) {
+                        setNoteUrls(prev => prev.includes(url) ? prev : [...prev, url]);
+                      }
+                    }}
+                  />
+                  {isDraggingOver && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-md pointer-events-none">
+                      <span className="text-sm font-medium text-primary">Drop to attach</span>
+                    </div>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center space-x-2">
                     <label className="cursor-pointer">
@@ -273,15 +320,28 @@ export default function PostNotePage() {
                       {isSubmitting ? 'Signing...' : 'Sign'}
                     </Button>
                   </div>
-                  {noteFiles.length > 0 && (
+                  {(noteFiles.length > 0 || noteUrls.length > 0) && (
                     <div className="flex flex-wrap gap-1">
                       {noteFiles.map((f, i) => (
-                        <span key={i} className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
+                        <span key={`file-${i}`} className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
                           {f.name}
                           <button
                             type="button"
                             className="text-muted-foreground hover:text-foreground"
                             onClick={() => setNoteFiles(prev => prev.filter((_, j) => j !== i))}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {noteUrls.map((url, i) => (
+                        <span key={`url-${i}`} className="inline-flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded px-2 py-0.5 max-w-xs">
+                          <Image className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{url}</span>
+                          <button
+                            type="button"
+                            className="text-blue-500 hover:text-blue-800 dark:hover:text-blue-100 shrink-0"
+                            onClick={() => setNoteUrls(prev => prev.filter((_, j) => j !== i))}
                           >
                             ×
                           </button>
