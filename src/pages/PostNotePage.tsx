@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Button } from '@/components/ui/button';
@@ -6,11 +7,22 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useLoginActions } from '@/hooks/useLoginActions';
-import { Paperclip, Pen, Image, Tag, X } from 'lucide-react';
+import { Paperclip, Pen, Image, Tag, X, CalendarDays } from 'lucide-react';
 import { useUploadFile } from '@/hooks/useUploadFile';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+const VALID_TABS = ['note', 'image', 'classified', 'event'] as const;
+type Tab = typeof VALID_TABS[number];
+
 export default function PostNotePage() {
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  const activeTab: Tab = VALID_TABS.includes(tab as Tab) ? (tab as Tab) : 'note';
+
+  const handleTabChange = (value: string) => {
+    navigate(`/post/${value}`, { replace: true });
+  };
+
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const notifTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -46,6 +58,18 @@ export default function PostNotePage() {
   const [adSpecs, setAdSpecs] = useState<{ name: string; value: string }[]>([{ name: '', value: '' }]);
   const [adImageFile, setAdImageFile] = useState<File | null>(null);
   const [adInputKey, setAdInputKey] = useState(0);
+
+  // Event tab state
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [eventAllDay, setEventAllDay] = useState(false);
+  const [eventStart, setEventStart] = useState('');
+  const [eventEnd, setEventEnd] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [eventHashtag, setEventHashtag] = useState('');
+  const [eventImageFile, setEventImageFile] = useState<File | null>(null);
+  const [eventImageInputKey, setEventImageInputKey] = useState(0);
+  const [eventAlsoPost, setEventAlsoPost] = useState(false);
 
   const { user } = useCurrentUser();
   const { mutateAsync: createEvent, isPending: isPublishing } = useNostrPublish();
@@ -228,6 +252,95 @@ export default function PostNotePage() {
     }
   };
 
+  const handleSubmitEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!eventTitle.trim() || !eventStart) {
+      notify('Title and start date are required.', 'error');
+      return;
+    }
+
+    if (!await ensureLoggedIn()) return;
+
+    const d = crypto.randomUUID();
+    const tags: string[][] = [
+      ['d', d],
+      ['title', eventTitle.trim()],
+    ];
+
+    if (eventAllDay) {
+      // kind 31922 — date-based
+      tags.push(['start', eventStart]);
+      if (eventEnd) tags.push(['end', eventEnd]);
+    } else {
+      // kind 31923 — time-based
+      const startTs = Math.floor(new Date(eventStart).getTime() / 1000);
+      tags.push(['start', String(startTs)]);
+
+      if (eventEnd) {
+        const endTs = Math.floor(new Date(eventEnd).getTime() / 1000);
+        tags.push(['end', String(endTs)]);
+        // D tags covering all days the event spans
+        const startDay = Math.floor(startTs / 86400);
+        const endDay = Math.floor(endTs / 86400);
+        for (let day = startDay; day <= endDay; day++) {
+          tags.push(['D', String(day)]);
+        }
+      } else {
+        tags.push(['D', String(Math.floor(startTs / 86400))]);
+      }
+    }
+
+    if (eventLocation.trim()) tags.push(['location', eventLocation.trim()]);
+    if (eventHashtag.trim()) tags.push(['t', eventHashtag.trim().toLowerCase().replace(/^#/, '')]);
+
+    let imageUrl = '';
+    let imetaTags: string[][] = [];
+    if (eventImageFile) {
+      try {
+        const [[_, url], ...rest] = await uploadFile(eventImageFile);
+        imageUrl = url;
+        imetaTags = rest;
+        tags.push(['image', imageUrl]);
+      } catch (error) {
+        notify(`Image upload failed: ${(error as Error).message}`, 'error');
+        return;
+      }
+    }
+
+    const kind = eventAllDay ? 31922 : 31923;
+
+    try {
+      await createEvent({ kind, content: eventDescription.trim(), tags });
+
+      if (eventAlsoPost) {
+        const startLabel = eventAllDay
+          ? eventStart
+          : new Date(eventStart).toLocaleString();
+        const lines = [`📅 ${eventTitle.trim()}`];
+        if (eventDescription.trim()) lines.push(eventDescription.trim());
+        lines.push(`🗓 ${startLabel}${eventEnd ? ` → ${eventAllDay ? eventEnd : new Date(eventEnd).toLocaleString()}` : ''}`);
+        if (eventLocation.trim()) lines.push(`📍 ${eventLocation.trim()}`);
+        if (imageUrl) lines.push(imageUrl);
+        const noteTags: string[][] = [...imetaTags];
+        if (eventHashtag.trim()) noteTags.push(['t', eventHashtag.trim().toLowerCase().replace(/^#/, '')]);
+        await createEvent({ kind: 1, content: lines.join('\n'), tags: noteTags });
+      }
+
+      setEventTitle('');
+      setEventDescription('');
+      setEventStart('');
+      setEventEnd('');
+      setEventLocation('');
+      setEventHashtag('');
+      setEventImageFile(null);
+      setEventImageInputKey(k => k + 1);
+      notify(eventAlsoPost ? 'Event posted + shared as note!' : 'Event posted!');
+    } catch (error) {
+      notify(`Failed to post event: ${(error as Error).message}`, 'error');
+    }
+  };
+
   return (
     <div className="fixed left-1/2 -translate-x-1/2 top-[10%] w-full max-w-2xl px-4 max-h-[85vh] overflow-y-auto">
       <Card>
@@ -241,13 +354,15 @@ export default function PostNotePage() {
               <button type="button" onClick={() => setNotification(null)} className="ml-2 opacity-60 hover:opacity-100"><X className="h-3 w-3" /></button>
             </div>
           )}
-          <Tabs defaultValue="note" className="w-full">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="flex w-full bg-muted text-muted-foreground rounded-t-lg border-b-0">
               <TabsTrigger value="note" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Pen className="h-5 w-5" /></TabsTrigger>
               <div className="w-px bg-border self-stretch my-1" />
               <TabsTrigger value="image" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Image className="h-5 w-5" /></TabsTrigger>
               <div className="w-px bg-border self-stretch my-1" />
               <TabsTrigger value="classified" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><Tag className="h-5 w-5" /></TabsTrigger>
+              <div className="w-px bg-border self-stretch my-1" />
+              <TabsTrigger value="event" className="flex-1 rounded-t-lg data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"><CalendarDays className="h-5 w-5" /></TabsTrigger>
             </TabsList>
 
             {/* Note tab */}
@@ -443,6 +558,82 @@ export default function PostNotePage() {
                   {adImageFile && <span className="text-sm text-muted-foreground">{adImageFile.name}</span>}
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? 'Signing...' : 'Post Ad'}
+                  </Button>
+                </div>
+              </form>
+            </TabsContent>
+
+            {/* Event tab */}
+            <TabsContent value="event">
+              <form onSubmit={handleSubmitEvent} className="space-y-3 mt-4">
+                <Input placeholder="Title *" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} disabled={isSubmitting} />
+                <Textarea placeholder="Description" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} rows={3} disabled={isSubmitting} />
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={eventAllDay}
+                    onChange={(e) => { setEventAllDay(e.target.checked); setEventStart(''); setEventEnd(''); }}
+                    disabled={isSubmitting}
+                    className="rounded"
+                  />
+                  All day
+                </label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground mb-1 block">Start *</label>
+                    <Input
+                      type={eventAllDay ? 'date' : 'datetime-local'}
+                      value={eventStart}
+                      onChange={(e) => setEventStart(e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground mb-1 block">End</label>
+                    <Input
+                      type={eventAllDay ? 'date' : 'datetime-local'}
+                      value={eventEnd}
+                      onChange={(e) => setEventEnd(e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+                <Input placeholder="Location" value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} disabled={isSubmitting} />
+                <Input placeholder="Hashtag (e.g. bitcoin, meetup)" value={eventHashtag} onChange={(e) => setEventHashtag(e.target.value)} disabled={isSubmitting} />
+                <div className="flex items-center space-x-2">
+                  <label className="cursor-pointer">
+                    <input
+                      key={eventImageInputKey}
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      disabled={isSubmitting}
+                      onChange={(e) => { if (e.target.files?.[0]) setEventImageFile(e.target.files[0]); }}
+                    />
+                    <Button type="button" variant="outline" size="icon" disabled={isSubmitting} asChild>
+                      <span><Paperclip className="h-4 w-4" /></span>
+                    </Button>
+                  </label>
+                  {eventImageFile && (
+                    <span className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
+                      {eventImageFile.name}
+                      <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setEventImageFile(null)}>×</button>
+                    </span>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={eventAlsoPost}
+                    onChange={(e) => setEventAlsoPost(e.target.checked)}
+                    disabled={isSubmitting}
+                    className="rounded"
+                  />
+                  Also share as a note
+                </label>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? 'Signing...' : 'Post Event'}
                   </Button>
                 </div>
               </form>

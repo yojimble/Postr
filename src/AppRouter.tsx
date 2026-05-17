@@ -12,10 +12,11 @@ export function AppRouter() {
       <ScrollToTop />
       <Routes>
         <Route path="/" element={<PostNotePage />} />
+        <Route path="/post" element={<PostNotePage />} />
+        <Route path="/post/:tab" element={<PostNotePage />} />
         {/* NIP-19 route for npub1, note1, naddr1, nevent1, nprofile1 */}
         <Route path="/:nip19" element={<NIP19Page />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="/post" element={<PostNotePage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
