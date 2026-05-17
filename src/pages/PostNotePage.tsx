@@ -107,8 +107,8 @@ export default function PostNotePage() {
       }
     }
 
-    const urlSuffix = uploadedUrls.length > 0 ? '\n' + uploadedUrls.join('\n') : '';
-    const content = noteContent + urlSuffix;
+    const parts = [noteContent.trim(), ...uploadedUrls].filter(Boolean);
+    const content = parts.join('\n');
     const tags: string[][] = [...allImetaTags];
 
     try {
