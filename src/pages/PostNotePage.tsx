@@ -41,10 +41,13 @@ export default function PostNotePage() {
   const [noteInputKey, setNoteInputKey] = useState(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
+  const [noteDate, setNoteDate] = useState('');
+
   // Image tab state
   const [imageCaption, setImageCaption] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageInputKey, setImageInputKey] = useState(0);
+  const [imageDate, setImageDate] = useState('');
 
   // Classified ad state
   const [adTitle, setAdTitle] = useState('');
@@ -134,13 +137,15 @@ export default function PostNotePage() {
     const parts = [noteContent.trim(), ...uploadedUrls].filter(Boolean);
     const content = parts.join('\n');
     const tags: string[][] = [...allImetaTags];
+    const created_at = noteDate ? Math.floor(new Date(noteDate).getTime() / 1000) : Math.floor(Date.now() / 1000);
 
     try {
-      await createEvent({ kind: 1, content, tags });
+      await createEvent({ kind: 1, content, tags, created_at });
       setNoteContent('');
       setNoteFiles([]);
       setNoteUrls([]);
       setNoteInputKey(k => k + 1);
+      setNoteDate('');
       notify('Note posted!');
     } catch (error) {
       notify(`Failed to post note: ${(error as Error).message}`, 'error');
@@ -169,12 +174,14 @@ export default function PostNotePage() {
     const dim = nip94Tags.find(([t]) => t === 'dim')?.[1];
     const imeta: string[] = ['imeta', `url ${url}`];
     if (dim) imeta.push(`dim ${dim}`);
+    const created_at = imageDate ? Math.floor(new Date(imageDate).getTime() / 1000) : Math.floor(Date.now() / 1000);
 
     try {
-      await createEvent({ kind: 20, content: imageCaption.trim(), tags: [imeta] });
+      await createEvent({ kind: 20, content: imageCaption.trim(), tags: [imeta], created_at });
       setImageFile(null);
       setImageCaption('');
       setImageInputKey(k => k + 1);
+      setImageDate('');
       notify('Image posted!');
     } catch (error) {
       notify(`Failed to post image: ${(error as Error).message}`, 'error');
@@ -465,6 +472,15 @@ export default function PostNotePage() {
                     </div>
                   )}
                 </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Date (optional, defaults to now)</label>
+                  <Input
+                    type="datetime-local"
+                    value={noteDate}
+                    onChange={(e) => setNoteDate(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
               </form>
             </TabsContent>
 
@@ -499,6 +515,15 @@ export default function PostNotePage() {
                   <Button type="submit" disabled={isSubmitting || !imageFile}>
                     {isSubmitting ? 'Signing...' : 'Sign Image'}
                   </Button>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Date (optional, defaults to now)</label>
+                  <Input
+                    type="datetime-local"
+                    value={imageDate}
+                    onChange={(e) => setImageDate(e.target.value)}
+                    disabled={isSubmitting}
+                  />
                 </div>
               </form>
             </TabsContent>
