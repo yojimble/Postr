@@ -195,11 +195,6 @@ export default function PostNotePage() {
       notify('Title and description are required.', 'error');
       return;
     }
-    if (!adSummary.trim()) {
-      notify('Summary is required.', 'error');
-      return;
-    }
-
     if (!await ensureLoggedIn()) return;
 
     let imageUrl = '';
@@ -221,15 +216,16 @@ export default function PostNotePage() {
     const tags: string[][] = [
       ['d', d],
       ['title', adTitle.trim()],
-      ['summary', adSummary.trim()],
       ['published_at', now],
       ['status', 'active'],
     ];
 
+    if (adSummary.trim()) tags.push(['summary', adSummary.trim()]);
+
     if (adPrice.trim()) tags.push(['price', adPrice.trim(), adCurrency.trim() || 'USD']);
     if (adLocation.trim()) tags.push(['location', adLocation.trim()]);
     if (adCategory.trim()) tags.push(['t', adCategory.trim().toLowerCase()]);
-    if (adStock.trim()) tags.push(['quantity', adStock.trim()]);
+    if (adStock.trim()) tags.push(['stock', adStock.trim()]);
     for (const spec of adSpecs) {
       if (spec.name.trim() && spec.value.trim()) {
         tags.push(['spec', spec.name.trim(), spec.value.trim()]);
@@ -532,7 +528,7 @@ export default function PostNotePage() {
             <TabsContent value="classified">
               <form onSubmit={handleSubmitAd} className="space-y-3 mt-4">
                 <Input placeholder="Title *" value={adTitle} onChange={(e) => setAdTitle(e.target.value)} disabled={isSubmitting} />
-                <Input placeholder="Summary *" value={adSummary} onChange={(e) => setAdSummary(e.target.value)} disabled={isSubmitting} />
+                <Input placeholder="Summary" value={adSummary} onChange={(e) => setAdSummary(e.target.value)} disabled={isSubmitting} />
                 <Textarea placeholder="Description *" value={adDescription} onChange={(e) => setAdDescription(e.target.value)} rows={4} disabled={isSubmitting} />
                 <div className="flex gap-2">
                   <Input placeholder="Price" value={adPrice} onChange={(e) => setAdPrice(e.target.value)} disabled={isSubmitting} className="flex-1" />
